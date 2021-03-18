@@ -44,3 +44,6 @@ let widen ~prev:_ ~next:_ ~num_iters:_ = assert false
 let pp fmt astate = assert false
 
 let initial = Itv (Int 0, Inf)
+
+let checker {IntraproceduralAnalysis.proc_desc; err_log} =
+  print_endline "Hi ToyChecker";

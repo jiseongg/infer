@@ -200,7 +200,8 @@ let all_checkers =
              Payloads.Fields.cost ConfigImpactAnalysis.checker
          in
          [(checker, Clang); (checker, Java)] ) }
-  ; {checker= Debugger; callbacks= [(intraprocedural Debugger.checker, Clang)]}]
+  ; {checker= Debugger; callbacks= [(intraprocedural Debugger.checker, Clang) ] }
+  ; {checker= ToyChecker; callbacks= [(intraprocedural ToyChecker.checker, Clang) ] } ]
 
 
 let get_active_checkers () =

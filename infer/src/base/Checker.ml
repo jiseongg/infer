@@ -39,6 +39,7 @@ type t =
   | SelfInBlock
   | Starvation
   | Topl
+  | ToyChecker
   | Uninit
 [@@deriving equal, enumerate]
 
@@ -429,6 +430,15 @@ let config_unsafe checker =
       ; cli_flags= Some {deprecated= []; show_in_help= true}
       ; enabled_by_default= false
       ; activates= [Pulse] }
+  | ToyChecker ->
+      { id= "toy-checker"
+      ; kind= UserFacing {title= "toy-checker"; markdown_body= ""}
+      ; support= supports_clang_and_java_experimental
+      ; short_documentation=
+          "Toy checker with interval domain"
+      ; cli_flags= Some {deprecated= []; show_in_help= true}
+      ; enabled_by_default= false
+      ; activates= [ToyChecker] }
   | Uninit ->
       { id= "uninit"
       ; kind= UserFacing {title= "Uninitialized Value"; markdown_body= ""}
