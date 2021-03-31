@@ -11,7 +11,7 @@
     ATDGenerated -open IBase -open IR -open Absint -open Biabduction -open BO
     -open Nullsafe -open Pulselib -open Checkers -open Costlib -open Quandary
     -open Topllib -open Concurrency -open Labs -open Dotnet -open Debuggerlib
-    -open Debuggerlib))
+    -open ToyCheckerlib))
  (libraries core memtrace IStdlib ATDGenerated IBase IR Absint Biabduction
    Nullsafe BO Checkers Costlib Quandary Topllib Concurrency Labs Dotnet)
  (preprocess
