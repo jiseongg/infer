@@ -6,14 +6,15 @@ type nullable = Nullable | NonNull
 
 module DomainData : AbstractDomain.S with type t = nullable
 
-module PVar : PrettyPrintable.PrintableOrderedType
+include module type of AbstractDomain.Map (Var) (DomainData)
 
-include module type of AbstractDomain.Map (PVar) (DomainData)
+(* overwrite map operations with key of Var.t *)
+val add : Var.t -> nullable -> t -> t
 
-val add : Pvar.t -> nullable -> t -> t
+val remove : Var.t -> t -> t
 
-val remove : Pvar.t -> t -> t
+val find : Var.t -> t -> nullable
 
-val mem : Pvar.t -> t -> bool
+val mem : Var.t -> t -> bool
 
 val initial : t

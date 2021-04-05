@@ -723,6 +723,8 @@ let javascript_injection =
 let lab_resource_leak =
   register ~id:"LAB_RESOURCE_LEAK" Error ResourceLeakLabExercise ~user_documentation:"Toy issue."
 
+let toy_checker_err =
+  register ~id:"TOY_CHECKER_ERR" Error ToyChecker ~user_documentation:"ToyChecker's issue."
 
 let dotnet_resource_leak =
   register ~id:"DOTNET_RESOURCE_LEAK" Error DOTNETResourceLeaks

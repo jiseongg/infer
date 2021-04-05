@@ -7,13 +7,6 @@ module L = Logging
 (* Simple domain data *)
 type nullable = Nullable | NonNull
 
-(* Key for invariant map *)
-module PVar = struct
-  type t = Pvar.t [@@deriving compare]
-  
-  let pp = Pvar.pp Pp.text
-end
-
 module DomainData = struct
   type t = nullable
 
@@ -40,7 +33,7 @@ module DomainData = struct
     F.fprintf fmt "%s" str_domain_data
 end
 
-include AbstractDomain.Map (PVar) (DomainData)
+include AbstractDomain.Map (Var) (DomainData)
 
 let initial = empty
 

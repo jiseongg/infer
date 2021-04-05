@@ -174,11 +174,11 @@ let config_unsafe checker =
       ; activates= [BufferOverrunAnalysis; PurityAnalysis] }
   | Debugger ->
       { id= "debugger"
-      ; kind= UserFacing {title= "Debugger"; markdown_body= ""}
+      ; kind= Exercise
       ; support= supports_clang
       ; short_documentation= "Print every SIL to stderr for debugging"
       ; cli_flags= Some {deprecated= []; show_in_help= true}
-      ; enabled_by_default= true
+      ; enabled_by_default= false
       ; activates= [] }
   | Eradicate ->
       { id= "eradicate"
@@ -432,13 +432,13 @@ let config_unsafe checker =
       ; activates= [Pulse] }
   | ToyChecker ->
       { id= "toy-checker"
-      ; kind= UserFacing {title= "toy-checker"; markdown_body= ""}
-      ; support= supports_clang_and_java_experimental
+      ; kind= Exercise
+      ; support= supports_clang
       ; short_documentation=
-          "Toy checker with interval domain"
+          "Toy checker for pointer analysis"
       ; cli_flags= Some {deprecated= []; show_in_help= true}
       ; enabled_by_default= false
-      ; activates= [ToyChecker] }
+      ; activates= [] }
   | Uninit ->
       { id= "uninit"
       ; kind= UserFacing {title= "Uninitialized Value"; markdown_body= ""}
