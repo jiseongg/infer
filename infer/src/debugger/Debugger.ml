@@ -2,7 +2,6 @@
 
 open! IStd
 module F = Format
-module L = Logging
 
 module TransferFunctions (CFG : ProcCfg.S) = struct
   module CFG = CFG
@@ -10,7 +9,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   type analysis_data = IntraproceduralAnalysis.t
 
-  let exec_instr astate proc_desc _ = fun instr ->
+  let exec_instr astate _ _ _ = fun instr ->
     match instr with
     | Sil.Store _ ->
         F.eprintf "%s\n" "Store: ";
@@ -51,7 +50,7 @@ module CFG = ProcCfg.Normal
 
 module Analyzer = AbstractInterpreter.MakeWTO (TransferFunctions (CFG))
   
-let checker ({IntraproceduralAnalysis.proc_desc; err_log} as analysis_data) =
+let checker ({IntraproceduralAnalysis.proc_desc} as analysis_data) =
   let initial = DebuggerDomain.initial in
   match Analyzer.compute_post analysis_data ~initial proc_desc with
     | _ ->
