@@ -6,120 +6,106 @@ module L = Logging
 
 module CFG = ProcCfg.NormalOneInstrPerNode
 
-module Domain = ToyCheckerDomain
+module Domain = AbsState
 
-module DomainData = ToyCheckerDomain.DomainData
-  
 module TransferFunctions = struct
   module CFG = ProcCfg.NormalOneInstrPerNode
   module Domain = Domain
 
   type analysis_data = IntraproceduralAnalysis.t 
-  
-  let of_id = Var.of_id
-  
-  let of_pvar = Var.of_pvar
 
-  let is_pvar_in pvar astate =
-    Domain.mem (of_pvar pvar) astate
-
-  let is_id_in id astate =
-    Domain.mem (of_id id) astate
-
-  let get_with_pvar pvar astate =
-    Domain.find (of_pvar pvar) astate
-
-  let get_with_id id astate =
-    Domain.find (of_id id) astate
-
-  let add_id id domain_value astate =
-    Domain.add (of_id id) domain_value astate
-
-  let add_pvar pvar domain_value astate =
-    Domain.add (of_pvar pvar) domain_value astate
-
-  let rec eval exp astate = 
+  let rec eval exp (heap, store) =
     match exp with
-    | Exp.Var id -> get_with_id id astate
-    | Exp.UnOp (Unop.Neg, e, _) ->
-        DomainData.neg (eval e astate)
-    | Exp.UnOp (Unop.LNot, e, _) ->
-        DomainData.lneg (eval e astate)
-    | Exp.BinOp (_, e1, e2) ->
-        DomainData.binop (eval e1 astate) (eval e2 astate)
+    | Exp.Var id ->
+        let (_, abs_val) = AbsStore.find id store in
+        abs_val
     | Exp.Const (Const.Cint i) ->
         if (IntLit.isnull i) || (IntLit.iszero i)
-        then Domain.Nullable else Domain.Top
-    | Exp.Cast (typ, e) -> 
-        DomainData.type_cast typ (eval e astate)
+        then AbsVal.Nullable else AbsVal.Top
+    | Exp.Cast (typ, e) ->
+        AbsVal.type_cast typ (eval e (heap, store))
     | Exp.Lvar pvar ->
-        if is_pvar_in pvar astate
-        then Domain.NonNull else Domain.Bottom
-    | Exp.Lfield (_, _, Typ.{desc= Tptr _}) ->
-        Domain.Nullable
-    | Exp.Lindex (_, _) -> Domain.Top
-    | _ -> Domain.Top
+        if AbsHeap.mem (AbsLoc.SingleElem pvar) heap
+        then AbsVal.NonNull else AbsVal.Bottom
+    | _ -> AbsVal.Top
 
-  let rec prune_exp exp astate =
+  let rec prune_exp exp (heap, store) =
     match exp with
     | Exp.BinOp (Binop.Eq, Exp.Var id, e)
     | Exp.BinOp (Binop.Eq, e, Exp.Var id)
     | Exp.UnOp (Unop.LNot, (Exp.BinOp (Binop.Ne, Exp.Var id, e)), _)
     | Exp.UnOp (Unop.LNot, (Exp.BinOp (Binop.Ne, e, Exp.Var id)), _) ->
-        let value = eval e astate in
-        add_id id value astate
+        let value = eval e (heap, store) in
+        let abs_loc =
+          match AbsStore.find id store with
+          | (Some abs_loc', _) -> abs_loc'
+          | (None, _) -> raise (Failure "unknown value")
+        in
+        (AbsHeap.add abs_loc value heap, store)
     | Exp.BinOp (Binop.Ne, Exp.Var id, e)
     | Exp.BinOp (Binop.Ne, e, Exp.Var id)
     | Exp.UnOp (Unop.LNot, (Exp.BinOp (Binop.Eq, Exp.Var id, e)), _)
     | Exp.UnOp (Unop.LNot, (Exp.BinOp (Binop.Eq, e, Exp.Var id)), _) ->
-        let value = eval e astate in
-        add_id id (DomainData.lneg value) astate
-    | _ -> astate
+        let value = eval e (heap, store) in
+        let abs_loc = 
+          match AbsStore.find id store with
+          | (Some abs_loc', _) -> abs_loc'
+          | (None, _) -> raise (Failure "unknown value")
+        in
+        (AbsHeap.add abs_loc (AbsVal.lnot value) heap, store)
+    | _ -> (heap, store)
 
-  let exec_instr astate proc_desc _ _ = fun instr ->
+  let exec_instr (heap, store) proc_desc _ _ = fun instr ->
     match instr with
-    | Sil.Store {e1= Exp.Lvar pvar; typ; e2} ->
-        let dom_val = eval (Exp.Cast (typ, e2)) astate in
-        add_pvar pvar dom_val astate
-    | Sil.Load {id; e; typ=Typ.{desc= Tptr _}} ->
-        let dom_val =  match eval e astate with
-          | Domain.NonPtr | Domain.Nullable | Domain.Bottom ->
-              Domain.Bottom
-          | Domain.Top -> Domain.Top
-          | Domain.NonNull -> Domain.Nullable
+    | Sil.Load {id; e= Exp.Lvar pvar} ->
+        let abs_loc = AbsLoc.SingleElem pvar in
+        let abs_val = AbsHeap.find abs_loc heap in
+        let store' = AbsStore.add id (Some abs_loc, abs_val) store in
+        (heap, store')
+    | Sil.Store {e1= Exp.Lvar pvar1; e2= Exp.Lvar pvar2} ->
+        let heap' =
+          if AbsHeap.mem (AbsLoc.SingleElem pvar2) heap
+          then AbsHeap.add (AbsLoc.SingleElem pvar1) NonNull heap
+          else AbsHeap.add (AbsLoc.SingleElem pvar1) Bottom heap
         in
-        add_id id dom_val astate
-    | Sil.Load {id; e; _} ->
-        let dom_val =  match eval e astate with
-          | Domain.NonPtr | Domain.Nullable | Domain.Bottom ->
-              Domain.Bottom
-          | Domain.Top -> Domain.Top
-          | Domain.NonNull -> Domain.NonPtr
+        (heap', store)
+    | Sil.Store {e1= Exp.Lvar pvar; typ; e2= Exp.Var id} ->
+        let (abs_loc, abs_val) =
+          match AbsStore.find id store with
+          | None, abs_val' -> ((AbsLoc.SingleElem pvar), abs_val')
+          | Some abs_loc', abs_val' -> (abs_loc', abs_val')
         in
-        add_id id dom_val astate
+        let heap' = AbsHeap.add abs_loc abs_val heap in
+        let store' = AbsStore.add id (Some abs_loc, abs_val) store in
+        (heap', store')
     | Sil.Call ((id, typ), _, args, _, _) ->
-        let return_val = 
+        let return_val =
           match typ with
-          | Typ.{desc= Tptr _} -> Domain.Nullable
-          | _ -> Domain.NonPtr
+          | Typ.{desc= Tptr _} -> AbsVal.Nullable
+          | _ -> AbsVal.NonPtr
         in
-        let new_astate = add_id id return_val astate in
-        let add_call_with_ptrs astate' = function
-          | Exp.Lvar pvar, Typ.{desc= Tptr ({desc= Tptr _}, _)} ->
-              add_pvar pvar Domain.Nullable astate'
-          | _ -> astate'
-        in
-        List.fold_left ~f:add_call_with_ptrs ~init:new_astate args
+        let store' = AbsStore.add id (None, return_val) store in
+        (heap, store')
     | Sil.Prune (exp, _, _, _) ->
-        prune_exp exp astate
-    | Sil.Metadata (Sil.ExitScope (vars, _)) ->
-        let delete_var astate' var = Domain.remove var astate' in
-        List.fold_left ~f:delete_var ~init:astate vars
+        prune_exp exp (heap, store)
+    | Sil.Metadata (Sil.ExitScope (vars, _)) -> 
+        let delete_var (heap', store') = function
+          | Var.ProgramVar pvar ->
+              (AbsHeap.remove (AbsLoc.SingleElem pvar) heap, store')
+          | Var.LogicalVar id ->
+              (heap', AbsStore.remove id store')
+        in
+        List.fold_left ~f:delete_var ~init:(heap, store) vars
+    | Sil.Metadata (Sil.VariableLifetimeBegins
+                      (pvar, Typ.{desc= Tptr _}, _)) ->
+        let heap' = AbsHeap.add (AbsLoc.SingleElem pvar) AbsVal.Nullable heap in
+        (heap', store)
     | Sil.Metadata (Sil.VariableLifetimeBegins
                       (pvar, _, _)) ->
-        add_pvar pvar Domain.Bottom astate
+        let heap' = AbsHeap.add (AbsLoc.SingleElem pvar) AbsVal.Bottom heap in
+        (heap', store)
     | _ ->
-        astate
+        (heap, store)
 
   let pp_session_name _node fmt = F.pp_print_string fmt "ToyChecker"
 end
@@ -127,19 +113,19 @@ end
 module Analyzer = AbstractInterpreter.MakeRPO (TransferFunctions)
 
 let report_issues {IntraproceduralAnalysis.proc_desc; err_log} cfg invariant_map = 
-  let report_null_deref pre_state instr =
+  let report_null_deref (pre_heap, pre_store) instr =
     match instr with 
-    | Sil.Store {e1= Exp.Var id; e2; loc} -> (
-        match Domain.find_opt (Var.of_id id) pre_state with
-        | Some Domain.Nullable ->
-            let message = F.asprintf "Null dereference on %a" Ident.pp id in
-            Reporting.log_issue proc_desc err_log ~loc ToyChecker IssueType.toy_checker_err message
-        | _ -> ()
-      )
-    | Sil.Load {id; e= Exp.Var _id; loc} -> (
-        match Domain.find_opt (Var.of_id _id) pre_state with
-        | Some Domain.Nullable ->
-            let message = F.asprintf "Null dereference on %a" Ident.pp _id in
+    | Sil.Store {e1= Exp.Var _id; loc}
+    | Sil.Load {e= Exp.Var _id; loc} -> (
+        let (abs_loc, abs_val) =
+          match AbsStore.find _id pre_store with
+          | (Some abs_loc', abs_val') -> (abs_loc', abs_val')
+          | _ -> raise (Failure "unknown value")
+        in
+        let pvar = AbsLoc.get_pvar abs_loc in
+        match AbsHeap.find_opt abs_loc pre_heap with
+        | Some AbsVal.Nullable ->
+            let message = F.asprintf "Potential null dereference: *%a could be Null" (Pvar.pp Pp.text) pvar in
             Reporting.log_issue proc_desc err_log ~loc ToyChecker IssueType.toy_checker_err message
         | _ -> ()
       )
@@ -160,22 +146,24 @@ let report_issues {IntraproceduralAnalysis.proc_desc; err_log} cfg invariant_map
 
 let checker ({IntraproceduralAnalysis.proc_desc; err_log} as analysis_data) =
   let formals = Procdesc.get_pvar_formals proc_desc in
-  let initialize_formals astate = function
+  let initialize_formals heap = function
     | (pvar, {Typ.desc= Tptr _}) ->
-        Domain.add (Var.of_pvar pvar) Domain.Nullable astate
+        AbsHeap.add (AbsLoc.SingleElem pvar) AbsVal.Nullable heap
     | (pvar, _) ->
-        Domain.add (Var.of_pvar pvar) Domain.NonPtr astate
+        AbsHeap.add (AbsLoc.SingleElem pvar) AbsVal.NonPtr heap
   in
   let locals = Procdesc.get_locals proc_desc in
-  let initialize_locals astate = function
-    | ProcAttributes.{name;} ->
+  let initialize_locals heap = function
+    | ProcAttributes.{name; typ} ->
         let pvar = Pvar.mk name (Procdesc.get_proc_name proc_desc) in 
-        Domain.add (Var.of_pvar pvar) Domain.Bottom astate
+        AbsHeap.add (AbsLoc.SingleElem pvar) AbsVal.Bottom heap
   in
-  let initial =
+  let initial_heap =
     List.fold_left locals ~f:initialize_locals ~init:(
-      List.fold_left formals ~f:initialize_formals ~init:Domain.initial)
+      List.fold_left formals ~f:initialize_formals ~init:AbsHeap.initial)
   in
+  let initial_store = AbsStore.initial in
+  let initial = (initial_heap, initial_store) in
   let cfg = CFG.from_pdesc proc_desc in
   let invariant_map = Analyzer.exec_pdesc
       ~do_narrowing:false ~initial analysis_data proc_desc in
