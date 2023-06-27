@@ -999,6 +999,17 @@ module PulseTransferFunctions = struct
           let results = SatUnsat.to_list result in
           (PulseReport.report_results tenv proc_desc err_log loc results, path, astate_n)
       | Call (ret, call_exp, actuals, loc, call_flags) ->
+          let _ = match call_exp with
+          | Const (Cfun fn) -> 
+              (
+                match fn with 
+                | C _ ->
+                    let pname = F.asprintf "Invocation: %a" Procname.pp_verbose fn in
+                    print_endline pname
+                | _ -> ()
+              )
+          | _ -> ()
+          in
           let astate_n = check_modified_before_dtor actuals call_exp astate astate_n in
           let astates =
             List.fold actuals ~init:[astate] ~f:(fun astates (exp, typ) ->
